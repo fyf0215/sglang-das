@@ -908,13 +908,13 @@ class Envs:
     SGLANG_OPT_DPSK_V4_RADIX = EnvBool(True)
     SGLANG_OPT_USE_OLD_COMPRESSOR = EnvBool(False)
     SGLANG_OPT_USE_TRITON_SWA_PREPARE = EnvBool(True)
-    SGLANG_OPT_USE_AITER_MHC_PRE = EnvBool(True)
-    SGLANG_OPT_USE_AITER_MHC_POST = EnvBool(True)
+    SGLANG_OPT_USE_AITER_MHC_PRE = EnvBool(False)
+    SGLANG_OPT_USE_AITER_MHC_POST = EnvBool(False)
     SGLANG_OPT_USE_AITER_SILU_MUL = EnvBool(False)
     SGLANG_OPT_USE_FUSED_COMPRESS = EnvBool(False)
     SGLANG_OPT_USE_FUSED_COMPRESS_TRITON = EnvBool(False)
     SGLANG_OPT_USE_FUSED_QK_NORM_ROPE = EnvBool(True)
-    SGLANG_OPT_USE_FUSED_CLAMP_ACT_MUL = EnvBool(True)
+    SGLANG_OPT_USE_FUSED_CLAMP_ACT_MUL = EnvBool(False)
     SGLANG_ENABLE_NVFP4_GEMM_SWIGLU_FUSION = EnvBool(True)
     SGLANG_FIX_MTP_HC_HIDDEN = EnvBool(False)
     # ====================================================================
@@ -922,19 +922,37 @@ class Envs:
     # Set False when using FP4-to-FP8 converted DeepSeek V4 checkpoint.
     SGLANG_DSV4_FP4_EXPERTS = EnvBool(True)
     SGLANG_DSV4_FP4_DEQUANT = EnvBool(False)
+    # Ported from v0.5.10_dpsk_v4 for the "compressed" attention backend.
+    SGLANG_DSV4_FIX_ATTN_PADDING = EnvBool(True)
+    SGLANG_DSV4_SPLIT_PREFILL_DECODE_MLA = EnvBool(False)
+    SGLANG_DEBUG_HACK_CP_CHECK_RANK_CONSISTENCY = EnvBool(False)
+    SGLANG_FIX_PD_IDLE = EnvBool(True)
+    SGLANG_OPT_DG_PAGED_MQA_LOGITS_CHUNK_SIZE = EnvInt(-1)
+    SGLANG_OPT_USE_TILELANG_SWA_PREPARE = EnvBool(True)
     # Default reasoning_effort for dsv4 chat encoder when request doesn't set it.
     # Accepts "", "max", "high" (empty string means unset); other values filtered to None.
     SGLANG_DSV4_REASONING_EFFORT = EnvStr("")
 
     # CUDA kernels
-    SGLANG_OPT_DEEPGEMM_HC_PRENORM = EnvBool(True)
+    SGLANG_OPT_DEEPGEMM_HC_PRENORM = EnvBool(False)
     SGLANG_OPT_USE_TILELANG_MHC_PRE = EnvBool(True)
     SGLANG_OPT_USE_TILELANG_MHC_POST = EnvBool(True)
+    # Use w8a8_scaled_mm_ops HIP kernel for INT8 GEMM instead of sgl_kernel/rocBLAS.
+    # Ported from v0.5.10 — produces w8a8_scaled_mm_medium_kernel in trace.
+    SGLANG_OPT_USE_HIP_INT8_SCALED_MM = EnvBool(False)
+    # Use w8a8 marlin packed-only GEMM for INT8 linear layers on K100_AI.
+    SGLANG_OPT_USE_W8A8_MARLIN_GEMM = EnvBool(False)
+    SGLANG_OPT_USE_W8A8_MARLIN_GEMM_SO_PATH = EnvStr(
+        "/usr/local/lib/w8a8_marlin.so"
+    )
+    # Switches per_token_quant_int8 source: lmslim (True) or sglang int8_kernel (False).
+    SGLANG_OPT_USE_LMSLIM_INT8_QUANT = EnvBool(False)
     SGLANG_DSV4_MHC_PREWARM = EnvBool(True)
     SGLANG_OPT_USE_TRITON_FUSED_MHC = EnvBool(True)
     SGLANG_OPT_FUSE_MHC_POST_PRE = EnvBool(False)
     SGLANG_OPT_USE_TILELANG_INDEXER = EnvBool(False)
     SGLANG_OPT_USE_AITER_INDEXER = EnvBool(False)
+    SGLANG_OPT_USE_HIP_PAGED_MQA_LOGITS = EnvBool(False)
     SGLANG_OPT_DSV4_NONPAGED_INDEXER = EnvBool(True)
     # Per-rank local query rows (after DP-attention sharding when enabled),
     # not request ISL.
