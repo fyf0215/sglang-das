@@ -107,6 +107,101 @@ def moe_sum(
 # moe_fused_gate / kimi_k2_moe_fused_gate (AOT gate kernels) retired — the gate/topk
 # path is consolidated onto the unified Triton router in
 # python/sglang/jit_kernel/moe_fused_gate.py (sglang issue #26771).
+#
+# Backward-compatible wrappers are provided below that delegate to the JIT
+# implementation so existing callers (e.g. deepseek_v4, kimi_k2) continue to
+# work without changes.
+
+
+def moe_fused_gate(
+    input_tensor,
+    bias,
+    num_expert_group,
+    topk_group,
+    topk,
+    num_fused_shared_experts=0,
+    routed_scaling_factor=0,
+    apply_routed_scaling_factor_on_output=False,
+):
+    """Backward-compatible wrapper that delegates to the unified Triton router.
+
+    See :func:`sglang.jit_kernel.moe_fused_gate.moe_fused_gate` for the
+    canonical implementation.
+    """
+    from sglang.jit_kernel.moe_fused_gate import moe_fused_gate as _jit_impl
+
+    return _jit_impl(
+        scores=input_tensor,
+        bias=bias,
+        topk=topk,
+        num_expert_group=num_expert_group,
+        topk_group=topk_group,
+        num_fused_shared_experts=num_fused_shared_experts,
+        routed_scaling_factor=routed_scaling_factor
+        if routed_scaling_factor != 0
+        else 1.0,
+        apply_routed_scaling_factor_on_output=apply_routed_scaling_factor_on_output,
+    )
+
+
+def kimi_k2_moe_fused_gate(
+    input_tensor,
+    bias,
+    topk,
+    renormalize=True,
+    routed_scaling_factor=1.0,
+    apply_routed_scaling_factor_on_output=False,
+):
+    """Backward-compatible wrapper for Kimi K2 MoE fused gate.
+
+    Delegates to the unified Triton router with ``num_expert_group=1``.
+    """
+    from sglang.jit_kernel.moe_fused_gate import moe_fused_gate as _jit_impl
+
+    return _jit_impl(
+        scores=input_tensor,
+        bias=bias,
+        topk=topk,
+        num_expert_group=1,
+        topk_group=1,
+        renormalize=renormalize,
+        routed_scaling_factor=routed_scaling_factor,
+        apply_routed_scaling_factor_on_output=apply_routed_scaling_factor_on_output,
+    )
+
+
+def cutlass_fp4_group_mm(
+    a_fp4,
+    b_fp4,
+    a_blockscale,
+    b_blockscale,
+    alphas,
+    out_dtype,
+    device=None,
+    params=None,
+):
+    """Backward-compatible wrapper for FP4 blockscaled grouped GEMM.
+
+    On Blackwell (sm_100a+) the implementation lives in
+    :mod:`sglang.jit_kernel.nvfp4`; this wrapper preserves the original
+    ``sgl_kernel.moe.cutlass_fp4_group_mm`` import path.
+
+    The *device* parameter from the old AOT API is accepted but ignored
+    (the JIT implementation derives the device from the input tensors).
+    """
+    from sglang.jit_kernel.nvfp4 import (
+        cutlass_fp4_group_mm as _jit_impl,
+    )
+
+    return _jit_impl(
+        a_fp4,
+        b_fp4,
+        a_blockscale,
+        b_blockscale,
+        alphas,
+        out_dtype,
+        params,
+    )
 
 
 def fp8_blockwise_scaled_grouped_mm(

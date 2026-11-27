@@ -598,7 +598,10 @@ class DeepseekV2MLP(nn.Module):
 
         # Fallback: fused silu+clamp kernel (still faster than unfused)
         elif self.swiglu_limit is not None:
-            if _is_npu:
+            if _is_npu or _is_hip:
+                # NPU / Hygon-DCU: the silu_and_mul_clamp JIT kernel uses CUDA
+                # warp intrinsics that don't build here; use the torch clamp
+                # equivalent (matches v0.5.10_dpsk_v4 which disables this fusion).
                 _g, _u = gate_up.chunk(2, dim=-1)
                 _lim = float(self.swiglu_limit)
                 gate_up = torch.cat(

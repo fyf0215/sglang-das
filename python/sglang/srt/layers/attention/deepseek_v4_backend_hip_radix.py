@@ -72,7 +72,11 @@ def _create_flashmla_metadata():
     from sglang.srt.utils import is_hip
 
     if is_hip():
-        return None
+        # Native Hygon DCU flash MLA (flashmla_k100) provides a real
+        # FlashMLASchedMeta, required by the "kernel" flash-MLA backend.
+        import flash_mla
+
+        return flash_mla.get_mla_metadata()[0]
     import sgl_kernel.flash_mla as flash_mla
 
     return flash_mla.get_mla_metadata()[0]

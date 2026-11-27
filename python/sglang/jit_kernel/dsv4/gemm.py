@@ -28,4 +28,4 @@ def linear_bf16_fp32(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         deep_gemm_wrapper.gemm_nt_bf16bf16f32(x, y, z)
         return z
     else:
-        return torch.mm(x, y.t(), out_dtype=torch.float32)
+        return torch.nn.functional.linear(x, y).float()

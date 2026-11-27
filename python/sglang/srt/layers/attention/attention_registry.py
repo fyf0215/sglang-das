@@ -141,6 +141,16 @@ def _create_nsa_compat(runner):
     return create_dsa_backend(runner)
 
 
+@register_attention_backend("compressed")
+def create_compressed_backend(runner):
+    # v0.5.10_dpsk_v4 native DCU compressed attention backend (graph-safe).
+    from sglang.srt.layers.attention.deepseek_v4_backend_radix import (
+        DeepseekV4BackendRadix,
+    )
+
+    return DeepseekV4BackendRadix(runner)
+
+
 @register_attention_backend("dsv4")
 def create_dsv4_backend(runner):
     if _is_npu:

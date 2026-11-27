@@ -45,6 +45,11 @@ def flash_mla_with_kvcache_entrypoint(backend: str, **kwargs):
         return triton_fp8_attention_fwd(**kwargs)
 
     if backend == "kernel":
+        if is_hip():
+            # Native Hygon DCU flash MLA package (flashmla_k100), matching
+            # v0.5.10_dpsk_v4. Its signature matches the input_dict built by
+            # the dsv4 HIP backend.
+            import flash_mla
         return flash_mla.flash_mla_with_kvcache(**kwargs)
 
     raise NotImplementedError(f"unknown backend: {backend!r}")

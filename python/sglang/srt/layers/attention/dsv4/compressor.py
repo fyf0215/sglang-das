@@ -527,3 +527,13 @@ class Compressor(MultiPlatformOp):
             )
 
         return get_attn_backend().forward_compress(self, x, forward_batch)
+
+    def forward_hip(
+        self,
+        x: torch.Tensor,
+        forward_batch: ForwardBatch,
+        attn_backend: Optional[AttentionBackend] = None,
+    ) -> torch.Tensor:
+        # MultiPlatformOp forward_hip defaults to forward_cuda → NotImplementedError.
+        # Route to forward_native instead.
+        return self.forward_native(x, forward_batch, attn_backend)

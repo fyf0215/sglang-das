@@ -791,7 +791,21 @@ def _deepseek_v4_overrides(server_args: Any, hf_config: Any) -> dict:
     from sglang.srt.server_args import ServerArgs
 
     model_arch = hf_config.architectures[0]
-    overrides: Dict[str, Any] = {"attention_backend": "dsv4"}
+    # WIP: the native v0.5.10 "compressed" backend (DeepseekV4BackendRadix) is
+    # graph-safe/DCU-native but its port is incomplete (KV-pool + model
+    # Compressor/C4Indexer reconciliation pending). Opt in with
+    # SGLANG_DCU_COMPRESSED_BACKEND=1; default stays on the working "dsv4"
+    # (eager) path on HIP.
+    import os as _os
+
+    from sglang.srt.utils import is_hip as _is_hip_fn
+
+    _default_dsv4_backend = (
+        "compressed"
+        if (_is_hip_fn() and _os.environ.get("SGLANG_DCU_COMPRESSED_BACKEND") == "1")
+        else "dsv4"
+    )
+    overrides: Dict[str, Any] = {"attention_backend": _default_dsv4_backend}
 
     page_size = 256
     if server_args.device == "npu":

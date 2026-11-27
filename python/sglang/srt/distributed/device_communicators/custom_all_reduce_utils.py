@@ -476,12 +476,16 @@ def can_use_custom_all_reduce_with_nvlink(
     # where custom allreduce is not supported
     # this checks hardware and driver support for NVLink
     if world_size > 2 and not full_nvlink:
+        # Ported from v0.5.10: on PCIe-only systems (>2 GPUs), fall
+        # back to a reduced max_size instead of disabling entirely.
+        # The 1-stage PCIe allreduce kernel still works — it just has
+        # lower throughput than NVLink, so we cap the message size.
         logger.warning(
-            f"{cls_name} is disabled because it's not supported on"
-            " more than two PCIe-only GPUs. To silence this warning, "
-            "specify disable_custom_all_reduce=True explicitly."
+            "We are using PCIe's custom allreduce."
+            "If the performance is poor, we can add "
+            "--disable-custom-all-reduce in the instruction."
         )
-        return
+        max_size = 32 * 8192 * 2
 
     # test P2P capability, this checks software/cudaruntime support
     # this is expensive to compute at the first time

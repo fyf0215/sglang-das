@@ -42,6 +42,15 @@ def _jit_topk_v2_module():
     )
 
 
+@cache_once
+def _aot_topk_op_available() -> bool:
+    try:
+        torch.ops.sgl_kernel.deepseek_v4_topk_transform_512
+        return True
+    except AttributeError:
+        return False
+
+
 def topk_transform_512(
     scores: torch.Tensor,
     seq_lens: torch.Tensor,
@@ -51,9 +60,26 @@ def topk_transform_512(
     out_raw_indices: Optional[torch.Tensor] = None,
 ) -> None:
     if is_hip_runtime():
-        torch.ops.sgl_kernel.deepseek_v4_topk_transform_512(
-            scores, seq_lens, page_tables, out_page_indices, page_size, out_raw_indices
-        )
+        if _aot_topk_op_available():
+            torch.ops.sgl_kernel.deepseek_v4_topk_transform_512(
+                scores, seq_lens, page_tables, out_page_indices, page_size, out_raw_indices
+            )
+        else:
+            # The AOT op isn't compiled on the K100 image. Fall back to the
+            # legacy JIT topk.cuh (USE_ROCM-guarded), which is validated on
+            # K100 and restores v0.5.10's single-kernel topk per step.
+            from sglang.jit_kernel.deepseek_v4 import (
+                topk_transform_512 as topk_transform_512_legacy,
+            )
+
+            topk_transform_512_legacy(
+                scores,
+                seq_lens,
+                page_tables,
+                out_page_indices,
+                page_size,
+                out_raw_indices,
+            )
     else:
         module = _jit_topk_v1_module(out_page_indices.shape[1])
         module.topk_transform(

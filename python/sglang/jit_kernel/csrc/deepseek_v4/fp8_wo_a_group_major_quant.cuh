@@ -20,7 +20,11 @@
 #include <tvm/ffi/container/tensor.h>  // tvm::ffi::TensorView
 
 #include <cstdint>
+#ifdef __HIP_PLATFORM_AMD__
+#include <hip/hip_fp8.h>
+#else
 #include <cuda_fp8.h>
+#endif
 
 namespace {
 
