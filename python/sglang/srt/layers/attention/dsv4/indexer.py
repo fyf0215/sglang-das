@@ -66,6 +66,21 @@ if TYPE_CHECKING:
 
 _is_hcu = is_hcu()
 _is_aiter_fp8_paged_mqa_logits_supported = is_gfx942_supported() or is_gfx95_supported()
+
+# K100 (HCU) hand-written HIP kernel for the C4 indexer scoring step. It replaces
+# the torch composition (page gather -> fp8 dequant -> BMM -> relu -> weight ->
+# reduce -> mask, 17 kernels) with a single fused kernel, and fixes the paged
+# scale-offset semantics that made long-context tool calls lose arguments.
+_use_hip_paged_mqa_logits = envs.SGLANG_OPT_USE_HIP_PAGED_MQA_LOGITS.get()
+if _is_hcu and _use_hip_paged_mqa_logits:
+    from paged_mqa_logits_k100.ops import (
+        fp8_paged_mqa_logits as _hip_fp8_paged_mqa_logits,
+    )
+
+    logger.info(
+        "SGLANG_OPT_USE_HIP_PAGED_MQA_LOGITS=1 -- using paged_mqa_logits_k100 "
+        "(hand-written HIP kernel)"
+    )
 FP8_DTYPE = torch.float8_e4m3fnuz if is_fp8_fnuz() else torch.float8_e4m3fn
 FP8_MAX = torch.finfo(FP8_DTYPE).max
 
@@ -720,6 +735,8 @@ class C4IndexerBackendMixin:
             and _is_aiter_fp8_paged_mqa_logits_supported
         ):
             fn = _aiter_fp8_paged_mqa_logits
+        elif _is_hcu and _use_hip_paged_mqa_logits:
+            fn = _hip_fp8_paged_mqa_logits
         elif envs.SGLANG_FP8_PAGED_MQA_LOGITS_TORCH.get():
             if is_sm120_supported():
                 fn = fp8_paged_mqa_logits_torch_sm120

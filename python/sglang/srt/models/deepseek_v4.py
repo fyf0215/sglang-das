@@ -173,6 +173,23 @@ _use_fused_qnorm_rope_kv_rope_quant = get_bool_env_var(
 )
 _use_aiter_tilelang_mhc = get_bool_env_var("SGLANG_ROCM_USE_AITER_TILELANG_MHC")
 
+# K100 (HCU) hand-written HIP fused mHC kernels (mhc_hip_ops wheel).
+# pre: one K-loop doing RMS + 24-way GEMV, 25 reductions sharing 2 barriers,
+#      4x4 Sinkhorn in the registers of tid 0  (145 torch kernels -> 1).
+# post: per (token, head) block, no LDS.
+_use_hip_mhc_pre = get_bool_env_var("SGLANG_OPT_USE_HIP_MHC_PRE")
+_use_hip_mhc_post = get_bool_env_var("SGLANG_OPT_USE_HIP_MHC_POST")
+if (_use_hip_mhc_pre or _use_hip_mhc_post) and _is_hcu:
+    from mhc_hip_ops import mhc_post as hip_mhc_post
+    from mhc_hip_ops import mhc_pre as hip_mhc_pre
+
+    logger.info(
+        "SGLANG_OPT_USE_HIP_MHC_PRE=%s SGLANG_OPT_USE_HIP_MHC_POST=%s -- using "
+        "mhc_hip_ops hand-written HIP kernels",
+        _use_hip_mhc_pre,
+        _use_hip_mhc_post,
+    )
+
 if _is_hcu:
     from lightop import op
 
@@ -1453,6 +1470,22 @@ class DeepseekV4DecoderLayer(nn.Module):
             )
             return y, post, comb, False
 
+        if _is_hcu and _use_hip_mhc_pre:
+            post, comb, y = hip_mhc_pre(
+                residual=x,
+                fn=hc_fn,
+                hc_scale=hc_scale,
+                hc_base=hc_base,
+                rms_eps=self.rms_norm_eps,
+                hc_pre_eps=self.hc_eps,
+                hc_sinkhorn_eps=self.hc_eps,
+                hc_post_mult_value=1.0,
+                sinkhorn_repeat=self.hc_sinkhorn_iters,
+                hc_mult=self.hc_mult,
+                hidden_size=x.shape[-1],
+            )
+            return y, post.squeeze(-1), comb, False
+
         if envs.SGLANG_OPT_USE_TILELANG_MHC_PRE.get():
             if _is_hcu and _use_aiter_tilelang_mhc:
                 post, comb, y = mhc_pre_big_fuse(
@@ -1561,6 +1594,16 @@ class DeepseekV4DecoderLayer(nn.Module):
 
         if _is_npu:
             return torch.ops.custom.npu_hc_post(x, residual, post, comb)
+
+        if _is_hcu and _use_hip_mhc_post:
+            return hip_mhc_post(
+                x,
+                residual,
+                post.unsqueeze(-1),
+                comb,
+                hc_mult=self.hc_mult,
+                hidden_size=x.shape[-1],
+            )
 
         if envs.SGLANG_OPT_USE_TILELANG_MHC_POST.get():
             if _is_hcu and _use_aiter_tilelang_mhc:

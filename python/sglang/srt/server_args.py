@@ -4546,6 +4546,22 @@ class ServerArgs:
                 envs.SGLANG_OPT_USE_MULTI_STREAM_OVERLAP.set(False)
                 envs.SGLANG_EAGER_INPUT_NO_COPY.set(True)
 
+                if is_hcu():
+                    # K100: page_size is forced to 256 for DSV4, which is
+                    # incompatible with aiter's deepgemm_fp8_paged_mqa_logits
+                    # (it asserts KVBlockSize == 1). When the hand-written HIP
+                    # kernels are enabled they take over the whole path, so the
+                    # aiter/tilelang/torch variants must stay off.
+                    if envs.SGLANG_OPT_USE_HIP_PAGED_MQA_LOGITS.get():
+                        envs.SGLANG_OPT_USE_AITER_INDEXER.set(False)
+                        envs.SGLANG_FP8_PAGED_MQA_LOGITS_TORCH.set(False)
+                    if (
+                        envs.SGLANG_OPT_USE_HIP_MHC_PRE.get()
+                        or envs.SGLANG_OPT_USE_HIP_MHC_POST.get()
+                    ):
+                        envs.SGLANG_OPT_USE_TILELANG_MHC_PRE.set(False)
+                        envs.SGLANG_OPT_USE_TILELANG_MHC_POST.set(False)
+
         elif model_arch in ["GptOssForCausalLM"]:
             # Attention backend selection + XPU dtype validation moved to the
             # override registry (arg_groups/overrides.py: _gpt_oss_overrides).

@@ -5,7 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import importlib.util
 import os
+from pathlib import Path
 from typing import Callable, Optional
 
 import torch
@@ -27,6 +29,7 @@ from sglang.srt.layers.quantization.compressed_tensors.schemes import (
 )
 from sglang.srt.layers.quantization.utils import requantize_with_max_scale
 from sglang.srt.utils import get_bool_env_var, is_cuda, is_hcu
+from sglang.srt.environ import envs
 
 _use_fused_rms_quant = get_bool_env_var("SGLANG_USE_FUSED_RMS_QUANT")
 _use_fused_silu_mul_quant = get_bool_env_var("SGLANG_USE_FUSED_SILU_MUL_QUANT")
@@ -44,6 +47,56 @@ if _is_cuda:
 from sglang.srt.utils import W8a8GetCacheJSON
 
 W8A8_TRITONJSON = W8a8GetCacheJSON()
+
+
+# --- K100 W8A8 Marlin packed GEMM (W8A8_SUPPORT_METHODS=4) ---
+# The kernel is shipped as a standalone .so (libw8a8_marlin.so). It is packed-only:
+# the weight is re-laid out once at load time and gemm() takes the packed 1D blob,
+# so the inference path is a single launch with no layout conversion.
+_use_w8a8_marlin_gemm = envs.SGLANG_OPT_USE_W8A8_MARLIN_GEMM.get()
+_w8a8_marlin_module = None
+
+
+def _get_w8a8_marlin_module():
+    global _w8a8_marlin_module
+    if _w8a8_marlin_module is not None:
+        return _w8a8_marlin_module
+    so_path = Path(envs.SGLANG_OPT_USE_W8A8_MARLIN_GEMM_SO_PATH.get())
+    if not so_path.is_file():
+        raise RuntimeError(
+            f"W8A8 Marlin extension does not exist: {so_path}. Please set "
+            "SGLANG_OPT_USE_W8A8_MARLIN_GEMM_SO_PATH to the correct path."
+        )
+    spec = importlib.util.spec_from_file_location("w8a8_marlin", str(so_path))
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load W8A8 Marlin extension: {so_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _w8a8_marlin_module = module
+    print(f"[W8A8 Marlin] compressed-tensors Linear GEMM enabled: {so_path}", flush=True)
+    return module
+
+
+def _validate_w8a8_marlin(x_q, packed_weight, weight_scale, bias) -> None:
+    if bias is not None:
+        raise RuntimeError("W8A8 Marlin GEMM does not support bias")
+    if x_q.dtype != torch.int8 or packed_weight.dtype != torch.int8:
+        raise RuntimeError(
+            "W8A8 Marlin GEMM requires INT8 activation and weight, "
+            f"got {x_q.dtype} and {packed_weight.dtype}"
+        )
+    if x_q.ndim != 2 or packed_weight.ndim != 1:
+        raise RuntimeError(
+            "W8A8 Marlin GEMM requires x_q[M,K] and packed_weight[bytes], "
+            f"got {tuple(x_q.shape)} and {tuple(packed_weight.shape)}"
+        )
+    k = x_q.shape[1]
+    n = weight_scale.numel()
+    if k < 64 or k % 16 != 0 or n % 16 != 0:
+        raise RuntimeError(
+            "W8A8 Marlin packed GEMM requires K>=64 and K/N divisible by 16, "
+            f"got N={n}, K={k}"
+        )
 
 
 class CompressedTensorsW8A8Int8(CompressedTensorsLinearScheme):
@@ -273,6 +326,16 @@ class CompressedTensorsW8A8Int8(CompressedTensorsLinearScheme):
         else:
             layer.azp_adj = None
 
+        # Pack the INT8 weight for the W8A8 Marlin kernel. The packed-only ABI
+        # replaces the raw [K, N] tensor with a 1D byte blob, so the inference
+        # path never needs a layout conversion again.
+        if _use_w8a8_marlin_gemm:
+            _get_w8a8_marlin_module()  # eager-load .so: fail at startup, not mid-serving
+            packed = _get_w8a8_marlin_module().pack_weight(
+                layer.weight.data.contiguous()
+            )
+            layer.weight = Parameter(packed, requires_grad=False)
+
     def apply_weights(
         self,
         layer: torch.nn.Module,
@@ -289,6 +352,15 @@ class CompressedTensorsW8A8Int8(CompressedTensorsLinearScheme):
             x_q, x_scale = silu_quant_args
         else:
             x_q, x_scale = per_token_quant_int8(x)
+
+        if _use_w8a8_marlin_gemm:
+            _validate_w8a8_marlin(x_q, layer.weight, layer.weight_scale, bias)
+            return _get_w8a8_marlin_module().gemm(
+                x_q,
+                layer.weight,
+                x_scale,
+                layer.weight_scale,
+            )
 
         # return quant_ops.custom_scaled_mm(x_q, layer.weight, x_scale, layer.weight_scale, out_dtype=x.dtype, bias=bias)
 
