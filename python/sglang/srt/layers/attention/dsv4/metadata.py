@@ -141,6 +141,9 @@ class PagedIndexerMetadata:
             or envs.SGLANG_OPT_USE_AITER_INDEXER.get()
             or _is_hcu
         ):
+            # HIP uses the lightop fused paged-mqa-logits kernel, which builds
+            # its own schedule internally and takes schedule_meta=None (deep_gemm
+            # is CUDA-only and unavailable here). Same as v0.5.10's DCU path.
             self.deep_gemm_metadata = None
         else:
             import deep_gemm
