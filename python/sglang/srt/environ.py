@@ -937,16 +937,11 @@ class Envs:
     SGLANG_OPT_DEEPGEMM_HC_PRENORM = EnvBool(False)
     SGLANG_OPT_USE_TILELANG_MHC_PRE = EnvBool(True)
     SGLANG_OPT_USE_TILELANG_MHC_POST = EnvBool(True)
-    # Use w8a8_scaled_mm_ops HIP kernel for INT8 GEMM instead of sgl_kernel/rocBLAS.
-    # Ported from v0.5.10 — produces w8a8_scaled_mm_medium_kernel in trace.
-    SGLANG_OPT_USE_HIP_INT8_SCALED_MM = EnvBool(False)
     # Use w8a8 marlin packed-only GEMM for INT8 linear layers on K100_AI.
     SGLANG_OPT_USE_W8A8_MARLIN_GEMM = EnvBool(False)
     SGLANG_OPT_USE_W8A8_MARLIN_GEMM_SO_PATH = EnvStr(
         "/usr/local/lib/w8a8_marlin.so"
     )
-    # Switches per_token_quant_int8 source: lmslim (True) or sglang int8_kernel (False).
-    SGLANG_OPT_USE_LMSLIM_INT8_QUANT = EnvBool(False)
     SGLANG_DSV4_MHC_PREWARM = EnvBool(True)
     SGLANG_OPT_USE_TRITON_FUSED_MHC = EnvBool(True)
     SGLANG_OPT_FUSE_MHC_POST_PRE = EnvBool(False)
