@@ -509,7 +509,12 @@ def _use_amd_deterministic_impl() -> bool:
         return envs.SGLANG_ENABLE_DETERMINISTIC_INFERENCE.get()
 
 
-_sglang_dcu_custom_cache = get_bool_env_var("DCU_CUSTOM_CACHE", default="true")
+# DCU custom-AR graph fast path: default on, mirroring the delivered image.
+_sglang_dcu_custom_cache = os.environ.get("DCU_CUSTOM_CACHE", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def _can_p2p(rank: int, world_size: int) -> bool:
